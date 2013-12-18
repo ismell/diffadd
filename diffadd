@@ -1,0 +1,60 @@
+#!/bin/bash
+#echo "ARGS: '$@'"
+
+PATH="/usr/lib/git-core:$PATH"
+
+root="$(git rev-parse --show-toplevel)"
+#echo "ROOT! ${root}"
+#echo "AT: '`pwd`'"
+#echo "1: '$1', 2: '$2', 3: '$3'"
+#trap ctrl_c INT
+
+DIFF="$(git config --get diff.tool)"
+
+if [ -z "$DIFF" ]; then
+  DIFF="$(git config --get merge.tool)"
+fi
+
+if [ -z "$DIFF" ]; then
+  echo "Difftool is not configured"
+  exit 1
+fi
+
+#function ctrl_c() {
+#  # Nothing to see here
+#}
+
+git diff --name-only "$@" |
+while read file; do
+    tmpdir="$(mktemp -d /tmp/diffadd.XXXXXX)"
+    orig_dir="$tmpdir/new/`dirname \"$file\"`"
+    mkdir -p "$orig_dir"
+
+    cp "$root/$file" "$orig_dir"
+
+    # this has your changes in it
+    work_tree_version="$tmpdir/new/$file"
+
+    # this has the pristine version
+    git checkout-index --prefix="$tmpdir/orig/" "$root/$file"
+    index_version="$tmpdir/orig/$file"
+    
+    git-difftool--helper "$work_tree_version" "$index_version" "0000" "100644" "$work_tree_version" "0000" "100644" > /dev/null &>/dev/null
+    ret=$?
+
+    if [ $? -ne 0 ]; then
+      rm -r "$tmpdir"
+      continue
+    fi
+
+    patch="$tmpdir/patch" 
+    git diff --no-index -- "$index_version" "$work_tree_version" > "$patch"
+    
+    if [ $? -eq 1 ]; then
+      #echo "APPLY PATCH: $patch"
+      cd "$root"
+      git apply --cached -p 4 --whitespace=nowarn "$patch"
+    fi
+    
+    rm -r "$tmpdir"
+done
