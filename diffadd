@@ -1,7 +1,20 @@
 #!/bin/bash
-#echo "ARGS: '$@'"
 
 PATH="/usr/lib/git-core:$PATH"
+
+function sigint() {
+  exit
+}
+
+trap sigint INT
+
+function finish {
+  if [[ -e $tmpdir ]]; then
+    rm -rf "$tmpdir"
+  fi
+}
+
+trap finish EXIT
 
 root="$(git rev-parse --show-toplevel)"
 #echo "ROOT! ${root}"
@@ -20,14 +33,13 @@ if [ -z "$DIFF" ]; then
   exit 1
 fi
 
-#function ctrl_c() {
-#  # Nothing to see here
-#}
+while read -r file; do
+    if [[ $STOP -eq 1 ]]; then
+      break
+    fi
 
-git diff --name-only "$@" |
-while read file; do
     tmpdir="$(mktemp -d /tmp/diffadd.XXXXXX)"
-    orig_dir="$tmpdir/new/`dirname \"$file\"`"
+    orig_dir="$tmpdir/new/$(dirname "$file")"
     mkdir -p "$orig_dir"
 
     cp "$root/$file" "$orig_dir"
@@ -38,23 +50,22 @@ while read file; do
     # this has the pristine version
     git checkout-index --prefix="$tmpdir/orig/" "$root/$file"
     index_version="$tmpdir/orig/$file"
-    
-    git-difftool--helper "$work_tree_version" "$index_version" "0000" "100644" "$work_tree_version" "0000" "100644" > /dev/null &>/dev/null
-    ret=$?
 
-    if [ $? -ne 0 ]; then
+    if ! git-difftool--helper "$work_tree_version" "$index_version" "0000" "100644" "$work_tree_version" "0000" "100644" &>/dev/null; then
       rm -r "$tmpdir"
       continue
     fi
 
-    patch="$tmpdir/patch" 
+    patch="$tmpdir/patch"
     git diff --no-index -- "$index_version" "$work_tree_version" > "$patch"
-    
-    if [ $? -eq 1 ]; then
-      #echo "APPLY PATCH: $patch"
-      cd "$root"
+
+    if [[ $? -eq 1 ]]; then
+      if ! cd "$root"; then
+        echo "Failed to cd into $root"
+        exit 1
+      fi
       git apply --cached -p 4 --whitespace=nowarn "$patch"
     fi
-    
+
     rm -r "$tmpdir"
-done
+done < <(git diff --name-only "$@")
