@@ -11,4 +11,4 @@ Add diffadd to your path and then add the following to your .gitconfig
 
 Then you can do `git diffadd`
 
-This has been tested using [Meld](https://sourcegear.com/diffmerge/) and [Meld](http://meldmerge.org/)
+This has been tested using [Diffmerge](https://sourcegear.com/diffmerge/) and [Meld](http://meldmerge.org/)
